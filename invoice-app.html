@@ -6,6 +6,7 @@
 <title>JT Walton</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/3.7.1/js/msal-browser.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -229,7 +230,7 @@ body {
 
   <div class="header">
     <h1>JT Walton</h1>
-    <span style="font-size:0.75rem;opacity:.6;">2026-27</span>
+    <button id="ms-auth-btn" class="settings-btn" onclick="msAuthClick()" style="display:none;">Sign in</button>
   </div>
 
   <div class="tabs">
@@ -290,9 +291,7 @@ body {
       <div class="summary-row net"><span>Net Payable</span><span id="sum-net">-</span></div>
     </div>
 
-    <button class="btn btn-send" onclick="sendInvoice()">1. Download Invoice PDF</button>
-
-    <a id="inv-email-btn" class="btn btn-send" style="display:none; margin-top:10px; background:#2a6f5f;" href="#">2. Open Email (attach the PDF)</a>
+    <button class="btn btn-send" id="inv-send-btn" onclick="sendInvoice()">Send Invoice</button>
 
     <div class="status" id="inv-status"></div>
   </div>
@@ -427,6 +426,120 @@ body {
 </div>
 
 <script>
+// ── MICROSOFT GRAPH AUTH ────────────────────────────────────────────
+const MS_CLIENT_ID = 'd4cf8841-d2cb-493a-b3d5-e2ab24aeb352';
+const MS_REDIRECT_URI = 'https://waltonfamily.github.io/JTWalton/invoice-app.html';
+const MS_SCOPES = ['User.Read', 'Files.ReadWrite', 'Mail.Send'];
+
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: MS_CLIENT_ID,
+    authority: 'https://login.microsoftonline.com/common',
+    redirectUri: MS_REDIRECT_URI
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+});
+
+let msAccount = null;
+
+async function msInit() {
+  await msalInstance.initialize();
+  const result = await msalInstance.handleRedirectPromise();
+  if (result && result.account) {
+    msAccount = result.account;
+  } else {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) msAccount = accounts[0];
+  }
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById('ms-auth-btn');
+  if (!btn) return;
+  btn.style.display = '';
+  if (msAccount) {
+    const name = msAccount.username || msAccount.name || 'Signed in';
+    btn.textContent = name.length > 20 ? name.slice(0, 18) + '…' : name;
+    btn.title = 'Tap to sign out (' + msAccount.username + ')';
+  } else {
+    btn.textContent = 'Sign in';
+    btn.title = 'Sign in with Microsoft';
+  }
+}
+
+async function msAuthClick() {
+  if (msAccount) {
+    if (confirm('Sign out of ' + msAccount.username + '?')) {
+      await msalInstance.logoutRedirect({ postLogoutRedirectUri: MS_REDIRECT_URI });
+    }
+  } else {
+    await msalInstance.loginRedirect({ scopes: MS_SCOPES });
+  }
+}
+
+async function msGetToken() {
+  if (!msAccount) {
+    await msalInstance.loginRedirect({ scopes: MS_SCOPES });
+    throw new Error('Redirecting to sign in');
+  }
+  try {
+    const result = await msalInstance.acquireTokenSilent({ scopes: MS_SCOPES, account: msAccount });
+    return result.accessToken;
+  } catch (e) {
+    await msalInstance.acquireTokenRedirect({ scopes: MS_SCOPES, account: msAccount });
+    throw new Error('Redirecting to refresh token');
+  }
+}
+
+async function graphUploadToOneDrive(pdfBlob, folderPath, filename) {
+  const token = await msGetToken();
+  const path = folderPath.replace(/^\/+|\/+$/g, '') + '/' + filename;
+  const url = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(path) + ':/content';
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/pdf' },
+    body: pdfBlob
+  });
+  if (!res.ok) throw new Error('OneDrive upload failed: ' + res.status + ' ' + await res.text());
+  return await res.json();
+}
+
+async function graphSendMail({ to, cc, subject, body, attachmentName, attachmentBlob }) {
+  const token = await msGetToken();
+  const base64 = await blobToBase64(attachmentBlob);
+  const message = {
+    message: {
+      subject: subject,
+      body: { contentType: 'Text', content: body },
+      toRecipients: [{ emailAddress: { address: to } }],
+      ccRecipients: cc ? [{ emailAddress: { address: cc } }] : [],
+      attachments: [{
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: attachmentName,
+        contentType: 'application/pdf',
+        contentBytes: base64
+      }]
+    },
+    saveToSentItems: true
+  };
+  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(message)
+  });
+  if (!res.ok) throw new Error('Send mail failed: ' + res.status + ' ' + await res.text());
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
 // ── CONFIG & STATE ──────────────────────────────────────────────────
 const STORAGE_KEY = 'jtwalton_config';
 const HISTORY_KEY = 'jtwalton_history';
@@ -755,42 +868,66 @@ function sendInvoice() {
     'Description: ' + desc + '\n\n' +
     '---INVOICE-DATA---\n' + invoiceData + '\n---END-DATA---';
 
-  // Step 1: download the PDF. Step 2 (open email) is a separate button so Joel can verify
-  // the download finished before being switched into Outlook.
-  doc.save(filename);
+  if (!msAccount) {
+    showStatus('inv-status', 'Please tap "Sign in" at the top right with your Microsoft account first.', 'error');
+    return;
+  }
 
-  const mailtoUrl = 'mailto:' + encodeURIComponent(config.contractorEmail) +
-    '?cc=' + encodeURIComponent(config.familyEmail) +
-    '&subject=' + encodeURIComponent('Invoice #' + num + ' - ' + dateLong) +
-    '&body=' + encodeURIComponent('Please find attached Invoice #' + num + '.\n\n' + familyBody);
+  const sendBtn = document.getElementById('inv-send-btn');
+  sendBtn.disabled = true;
+  const originalLabel = sendBtn.textContent;
 
-  const emailBtn = document.getElementById('inv-email-btn');
-  emailBtn.href = mailtoUrl;
-  emailBtn.style.display = 'block';
+  const subject = 'Invoice #' + num + ' - ' + dateLong;
+  const emailBody = 'Please find attached Invoice #' + num + ' dated ' + dateLong + '.\n\n' +
+    'Net amount due: ' + money(net) + '\n\n' +
+    'Kind regards,\n' + config.name + '\n' + config.mobile;
 
-  showStatus('inv-status', 'PDF saved as "' + filename + '" in Downloads. Tap button 2 to open the email, then attach the PDF.', 'success');
+  (async () => {
+    try {
+      sendBtn.textContent = 'Saving to OneDrive...';
+      showStatus('inv-status', 'Saving PDF to OneDrive...', 'success');
+      const folder = 'JT Walton/Invoices/' + yr;
+      await graphUploadToOneDrive(pdfBlob, folder, filename);
 
-  // Save to history and increment
-  history.invoices.unshift({
-    num, date, days, rate, labour, overtime, materials, gross, cis, net, desc,
-    sent: new Date().toISOString()
-  });
-  if (history.invoices.length > 100) history.invoices = history.invoices.slice(0, 100);
-  saveHistory();
+      sendBtn.textContent = 'Sending email...';
+      showStatus('inv-status', 'Sending invoice email...', 'success');
+      await graphSendMail({
+        to: config.contractorEmail,
+        cc: config.familyEmail,
+        subject: subject,
+        body: emailBody,
+        attachmentName: filename,
+        attachmentBlob: pdfBlob
+      });
 
-  config.nextInvoice = (parseInt(num) || 0) + 1;
-  saveConfig();
+      // Save to history and increment
+      history.invoices.unshift({
+        num, date, days, rate, labour, overtime, materials, gross, cis, net, desc,
+        sent: new Date().toISOString()
+      });
+      if (history.invoices.length > 100) history.invoices = history.invoices.slice(0, 100);
+      saveHistory();
 
-  setTimeout(() => {
-    document.getElementById('inv-num').value = pad4(config.nextInvoice);
-    document.getElementById('inv-days').value = '';
-    document.getElementById('inv-desc').value = 'Labour';
-    document.getElementById('inv-overtime').value = '0';
-    document.getElementById('inv-materials').value = '0';
-    calcInvoice();
-    renderHistory();
-    document.getElementById('inv-email-btn').style.display = 'none';
-  }, 30000);
+      config.nextInvoice = (parseInt(num) || 0) + 1;
+      saveConfig();
+
+      showStatus('inv-status', '✓ Invoice #' + num + ' sent to ' + config.contractorEmail + ' (CC ' + config.familyEmail + ') and saved to OneDrive: ' + folder, 'success');
+
+      document.getElementById('inv-num').value = pad4(config.nextInvoice);
+      document.getElementById('inv-days').value = '';
+      document.getElementById('inv-desc').value = 'Labour';
+      document.getElementById('inv-overtime').value = '0';
+      document.getElementById('inv-materials').value = '0';
+      calcInvoice();
+      renderHistory();
+    } catch (err) {
+      console.error(err);
+      showStatus('inv-status', 'Error: ' + err.message, 'error');
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.textContent = originalLabel;
+    }
+  })();
 }
 
 // ── EXPENSE ─────────────────────────────────────────────────────────
@@ -983,6 +1120,7 @@ if (config.name) {
 } else {
   document.getElementById('setup-screen').style.display = '';
 }
+msInit().catch(err => console.error('MSAL init failed:', err));
 </script>
 </body>
 </html>
