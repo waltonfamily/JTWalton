@@ -6,7 +6,7 @@
 <title>JT Walton</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script src="https://alcdn.msauth.net/browser/3.7.1/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -431,18 +431,22 @@ const MS_CLIENT_ID = 'd4cf8841-d2cb-493a-b3d5-e2ab24aeb352';
 const MS_REDIRECT_URI = 'https://waltonfamily.github.io/JTWalton/invoice-app.html';
 const MS_SCOPES = ['User.Read', 'Files.ReadWrite', 'Mail.Send'];
 
-const msalInstance = new msal.PublicClientApplication({
-  auth: {
-    clientId: MS_CLIENT_ID,
-    authority: 'https://login.microsoftonline.com/common',
-    redirectUri: MS_REDIRECT_URI
-  },
-  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
-});
-
+let msalInstance = null;
 let msAccount = null;
 
 async function msInit() {
+  if (typeof msal === 'undefined') {
+    console.error('MSAL library failed to load');
+    return;
+  }
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: MS_CLIENT_ID,
+      authority: 'https://login.microsoftonline.com/common',
+      redirectUri: MS_REDIRECT_URI
+    },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+  });
   await msalInstance.initialize();
   const result = await msalInstance.handleRedirectPromise();
   if (result && result.account) {
