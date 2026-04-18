@@ -61,10 +61,11 @@ body {
   box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .tab {
-  flex: 1; padding: 14px 6px; text-align: center;
-  color: rgba(255,255,255,.8); font-weight: bold; font-size: 0.85rem;
+  flex: 1; padding: 14px 4px; text-align: center;
+  color: rgba(255,255,255,.8); font-weight: bold; font-size: 0.78rem;
   cursor: pointer; border-bottom: 3px solid transparent;
   transition: all .2s;
+  white-space: nowrap;
 }
 .tab.active { color: #fff; border-bottom-color: #fff; background: rgba(255,255,255,.18); }
 
@@ -275,6 +276,7 @@ body {
     <div class="tab" onclick="switchTab('expense')">Expense</div>
     <div class="tab" onclick="switchTab('mileage')">Mileage</div>
     <div class="tab" onclick="switchTab('history')">History</div>
+    <div class="tab" onclick="switchTab('tax')">Tax</div>
     <div class="tab" onclick="switchTab('settings')">Settings</div>
   </div>
 
@@ -444,6 +446,40 @@ body {
     <div class="section-title" style="margin-top:24px;">Recent Mileage</div>
     <div id="mil-history"></div>
     <button class="btn btn-outline" onclick="clearHistory()" style="margin-top:20px;font-size:0.85rem;">Clear History</button>
+  </div>
+
+  <!-- ── TAX RETURN TAB ── -->
+  <div class="panel" id="panel-tax">
+    <div class="section-title">Self Assessment Summary</div>
+
+    <div class="form-group">
+      <label>Tax Year</label>
+      <select id="tax-year-select" onchange="renderTaxSummary()"></select>
+      <div class="hint">UK tax year runs 6 April – 5 April</div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">Income</div>
+    <div class="summary">
+      <div class="summary-row"><span>Invoices sent</span><span id="tax-inv-count">-</span></div>
+      <div class="summary-row total"><span>Turnover (gross invoiced)</span><span id="tax-turnover">-</span></div>
+      <div class="summary-row cis"><span>CIS tax already deducted</span><span id="tax-cis">-</span></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">Allowable Expenses</div>
+    <div class="summary">
+      <div class="summary-row"><span>Receipts logged (<span id="tax-exp-count">0</span>)</span><span id="tax-exp-total">-</span></div>
+      <div class="summary-row"><span>Mileage (<span id="tax-mil-miles">0</span> miles)</span><span id="tax-mil-total">-</span></div>
+      <div class="summary-row total"><span>Total allowable expenses</span><span id="tax-exp-sum">-</span></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">Profit</div>
+    <div class="summary">
+      <div class="summary-row net"><span>Net taxable profit</span><span id="tax-profit">-</span></div>
+    </div>
+
+    <div class="hint" style="margin-top:16px;padding:12px;background:#fff3cd;border-radius:8px;color:#664d03;line-height:1.4;">
+      <b>For guidance only.</b> Figures come from records on this phone — cross-check with the CSVs in OneDrive before filing. Personal allowance, income tax, Class 2 &amp; Class 4 NI are NOT calculated here; they are worked out annually at Self Assessment by plugging these totals into HMRC's calculator.
+    </div>
   </div>
 
   <!-- ── SETTINGS TAB ── -->
@@ -681,14 +717,15 @@ function csvEscape(val) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-async function appendAccountsRow(dateStr, rowValues) {
-  const taxYear = taxYearFromDate(dateStr);
-  const filename = 'JT Walton Accounts ' + taxYear + '.csv';
-  const path = 'JT Walton/Accounts/' + filename;
+function ukDate(s) {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  return d + '/' + m + '/' + y;
+}
+
+async function writeCsvRow(path, header, rowValues) {
   const token = await msGetToken();
   const url = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(path) + ':/content';
-
-  const header = 'Date,Type,Number,Description,Days,Rate,Labour,Overtime,Materials,Gross,CIS,Net,Status,PDFPath\n';
   let existing = '';
   const getRes = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
   if (getRes.ok) {
@@ -697,16 +734,29 @@ async function appendAccountsRow(dateStr, rowValues) {
   } else if (getRes.status === 404) {
     existing = header;
   } else {
-    throw new Error('Accounts file read failed: ' + getRes.status);
+    throw new Error('CSV read failed (' + path + '): ' + getRes.status);
   }
-
   const csv = existing + rowValues.map(csvEscape).join(',') + '\n';
   const putRes = await fetch(url, {
     method: 'PUT',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/csv' },
     body: csv
   });
-  if (!putRes.ok) throw new Error('Accounts file write failed: ' + putRes.status);
+  if (!putRes.ok) throw new Error('CSV write failed (' + path + '): ' + putRes.status);
+}
+
+async function appendInvoicesRow(dateStr, rowValues) {
+  const taxYear = taxYearFromDate(dateStr);
+  const path = 'JT Walton/Accounts/JT Walton Invoices ' + taxYear + '.csv';
+  const header = 'Date,Number,Description,Days,Rate,Labour,Overtime,Materials,Gross,CIS,Net,Status,PDFPath\n';
+  await writeCsvRow(path, header, rowValues);
+}
+
+async function appendExpensesRow(dateStr, rowValues) {
+  const taxYear = taxYearFromDate(dateStr);
+  const path = 'JT Walton/Accounts/JT Walton Expenses ' + taxYear + '.csv';
+  const header = 'Date,Number,Supplier,Description,Category,Amount,Status,PDFPath\n';
+  await writeCsvRow(path, header, rowValues);
 }
 
 async function graphRenameFile(oldPath, newPath) {
@@ -837,6 +887,62 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   event.target.classList.add('active');
   if (name === 'settings') loadSettingsTab();
+  if (name === 'tax') { populateTaxYearSelect(); renderTaxSummary(); }
+}
+
+// ── TAX SUMMARY ─────────────────────────────────────────────────────
+function populateTaxYearSelect() {
+  const sel = document.getElementById('tax-year-select');
+  const years = new Set();
+  for (const rec of [...history.invoices, ...history.expenses, ...history.mileage]) {
+    if (rec.date) years.add(taxYearFromDate(rec.date));
+  }
+  years.add(taxYearFromDate(todayStr()));
+  const sorted = Array.from(years).sort().reverse();
+  const currentVal = sel.value;
+  const defaultYear = currentVal && years.has(currentVal) ? currentVal : taxYearFromDate(todayStr());
+  sel.innerHTML = sorted.map(y => '<option value="' + y + '"' + (y === defaultYear ? ' selected' : '') + '>' + y + '</option>').join('');
+}
+
+function renderTaxSummary() {
+  const sel = document.getElementById('tax-year-select');
+  const year = sel.value || taxYearFromDate(todayStr());
+
+  let turnover = 0, cisDeducted = 0, invCount = 0;
+  for (const inv of history.invoices) {
+    if (!inv.date || taxYearFromDate(inv.date) !== year) continue;
+    if (inv.status === 'reversed') continue;
+    turnover += parseFloat(inv.gross) || 0;
+    cisDeducted += parseFloat(inv.cis) || 0;
+    invCount++;
+  }
+
+  let expTotal = 0, expCount = 0;
+  for (const exp of history.expenses) {
+    if (!exp.date || taxYearFromDate(exp.date) !== year) continue;
+    expTotal += parseFloat(exp.amount) || 0;
+    expCount++;
+  }
+
+  let milClaim = 0, milMiles = 0;
+  for (const m of history.mileage) {
+    if (!m.date || taxYearFromDate(m.date) !== year) continue;
+    milClaim += parseFloat(m.claim) || 0;
+    milMiles += parseFloat(m.miles) || 0;
+  }
+
+  const allowable = expTotal + milClaim;
+  const profit = turnover - allowable;
+
+  document.getElementById('tax-inv-count').textContent = invCount;
+  document.getElementById('tax-turnover').textContent = money(turnover);
+  document.getElementById('tax-cis').textContent = money(cisDeducted);
+  document.getElementById('tax-exp-count').textContent = expCount;
+  document.getElementById('tax-exp-total').textContent = money(expTotal);
+  document.getElementById('tax-mil-miles').textContent = milMiles.toFixed(1);
+  document.getElementById('tax-mil-total').textContent = money(milClaim);
+  document.getElementById('tax-exp-sum').textContent = money(allowable);
+  document.getElementById('tax-profit').textContent = money(profit);
 }
 
 // ── INVOICE CALCULATION ─────────────────────────────────────────────
@@ -1109,8 +1215,8 @@ function sendInvoice() {
 
       updateOverlay('Updating accounts...');
       const pdfPath = folder + '/' + filename;
-      await appendAccountsRow(date, [
-        date, 'Invoice', num, desc, days, rate.toFixed(2), labour.toFixed(2),
+      await appendInvoicesRow(date, [
+        ukDate(date), num, desc, days, rate.toFixed(2), labour.toFixed(2),
         overtime.toFixed(2), materials.toFixed(2), gross.toFixed(2),
         cis.toFixed(2), net.toFixed(2), 'Sent', pdfPath
       ]);
@@ -1192,8 +1298,8 @@ async function reverseInvoice(index) {
 
     updateOverlay('Updating accounts...');
     const rPdfPath = folder + '/' + rFilename;
-    await appendAccountsRow(inv.date, [
-      inv.date, 'Reversal', rNum, 'REVERSAL of #' + inv.num + ' — ' + inv.desc,
+    await appendInvoicesRow(inv.date, [
+      ukDate(inv.date), rNum, 'REVERSAL of #' + inv.num + ' — ' + inv.desc,
       -inv.days, inv.rate.toFixed(2), (-inv.labour).toFixed(2),
       (-inv.overtime).toFixed(2), (-inv.materials).toFixed(2),
       (-inv.gross).toFixed(2), (-inv.cis).toFixed(2), (-inv.net).toFixed(2),
@@ -1341,9 +1447,8 @@ async function submitExpense(mode, file) {
     }
 
     updateOverlay('Updating accounts...');
-    await appendAccountsRow(date, [
-      date, 'Expense', num, supplier + ' — ' + desc + ' (' + category + ')',
-      '', '', '', '', '', amount.toFixed(2), '', amount.toFixed(2), status, pdfPath
+    await appendExpensesRow(date, [
+      ukDate(date), num, supplier, desc, category, amount.toFixed(2), status, pdfPath
     ]);
 
     history.expenses.unshift({
@@ -1440,30 +1545,9 @@ function calcMileage() {
 
 async function appendMileageLogRow(dateStr, rowValues) {
   const taxYear = taxYearFromDate(dateStr);
-  const filename = 'JT Walton Mileage ' + taxYear + '.csv';
-  const path = 'JT Walton/Mileage/' + filename;
-  const token = await msGetToken();
-  const url = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(path) + ':/content';
-
+  const path = 'JT Walton/Mileage/JT Walton Mileage ' + taxYear + '.csv';
   const header = 'Date,Number,From,To,Purpose,Miles,CumulativeMiles,RateBreakdown,Claim\n';
-  let existing = '';
-  const getRes = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-  if (getRes.ok) {
-    existing = await getRes.text();
-    if (!existing.endsWith('\n')) existing += '\n';
-  } else if (getRes.status === 404) {
-    existing = header;
-  } else {
-    throw new Error('Mileage log read failed: ' + getRes.status);
-  }
-
-  const csv = existing + rowValues.map(csvEscape).join(',') + '\n';
-  const putRes = await fetch(url, {
-    method: 'PUT',
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/csv' },
-    body: csv
-  });
-  if (!putRes.ok) throw new Error('Mileage log write failed: ' + putRes.status);
+  await writeCsvRow(path, header, rowValues);
 }
 
 async function logMileage() {
@@ -1513,15 +1597,8 @@ async function logMileage() {
 
     updateOverlay('Updating mileage log...');
     await appendMileageLogRow(date, [
-      date, num, from, to, purpose,
+      ukDate(date), num, from, to, purpose,
       miles.toFixed(1), ytdAfter.toFixed(1), rateBreakdown, claim.toFixed(2)
-    ]);
-
-    updateOverlay('Updating accounts...');
-    const desc = miles.toFixed(1) + ' miles: ' + from + ' -> ' + to + ' - ' + purpose;
-    await appendAccountsRow(date, [
-      date, 'Mileage', num, desc, '', '', '', '', '',
-      claim.toFixed(2), '', claim.toFixed(2), 'Logged', logPath
     ]);
 
     history.mileage.unshift({
