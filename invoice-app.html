@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>JT Walton</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  background: #f0f2f5; color: #222;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── HEADER ── */
+.header {
+  background: #1a2e44; color: #fff; padding: 16px 20px;
+  display: flex; justify-content: space-between; align-items: center;
+  position: sticky; top: 0; z-index: 100;
+}
+.header h1 { font-size: 1.3rem; letter-spacing: .02em; }
+.header .settings-btn {
+  background: none; border: 1px solid rgba(255,255,255,.3);
+  color: #fff; border-radius: 6px; padding: 6px 12px;
+  font-size: 0.8rem; cursor: pointer;
+}
+
+/* ── TABS ── */
+.tabs {
+  display: flex; background: #2c3e50;
+  position: sticky; top: 56px; z-index: 99;
+}
+.tab {
+  flex: 1; padding: 14px; text-align: center;
+  color: rgba(255,255,255,.6); font-weight: bold; font-size: 0.95rem;
+  cursor: pointer; border-bottom: 3px solid transparent;
+  transition: all .2s;
+}
+.tab.active { color: #fff; border-bottom-color: #3a7d6e; background: rgba(255,255,255,.05); }
+
+/* ── PANELS ── */
+.panel { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
+.panel.active { display: block; }
+
+/* ── FORM ELEMENTS ── */
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; font-size: 0.78rem; font-weight: bold;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: #555; margin-bottom: 6px;
+}
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 14px; font-size: 1rem;
+  border: 2px solid #ddd; border-radius: 8px;
+  background: #fff; color: #222;
+  -webkit-appearance: none;
+}
+.form-group input:focus, .form-group select:focus {
+  outline: none; border-color: #3a7d6e;
+}
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+
+/* ── SUMMARY BOX ── */
+.summary {
+  background: #fff; border-radius: 10px; padding: 18px;
+  margin: 16px 0; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.summary-row {
+  display: flex; justify-content: space-between;
+  padding: 8px 0; font-size: 0.95rem;
+}
+.summary-row.total {
+  border-top: 2px solid #1a2e44; margin-top: 8px;
+  padding-top: 12px; font-weight: bold; font-size: 1.1rem;
+}
+.summary-row.cis { color: #c0392b; }
+.summary-row.net { color: #27ae60; font-weight: bold; font-size: 1.15rem; }
+
+/* ── BUTTONS ── */
+.btn {
+  width: 100%; padding: 16px; border: none; border-radius: 10px;
+  font-size: 1.05rem; font-weight: bold; cursor: pointer;
+  margin-bottom: 10px; transition: background .2s;
+}
+.btn-primary { background: #1a2e44; color: #fff; }
+.btn-primary:hover { background: #2c3e50; }
+.btn-send { background: #27ae60; color: #fff; }
+.btn-send:hover { background: #219a52; }
+.btn-outline {
+  background: #fff; color: #1a2e44;
+  border: 2px solid #1a2e44;
+}
+
+/* ── SETUP SCREEN ── */
+.setup-overlay {
+  position: fixed; inset: 0; background: #f0f2f5;
+  z-index: 1000; overflow-y: auto; padding: 20px;
+}
+.setup-card {
+  max-width: 500px; margin: 0 auto;
+  background: #fff; border-radius: 12px;
+  padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,.1);
+}
+.setup-card h2 { color: #1a2e44; margin-bottom: 4px; font-size: 1.3rem; }
+.setup-card p { color: #666; font-size: 0.85rem; margin-bottom: 20px; }
+.setup-section {
+  font-size: 0.75rem; font-weight: bold; text-transform: uppercase;
+  letter-spacing: .08em; color: #3a7d6e; margin: 20px 0 10px;
+  padding-top: 16px; border-top: 1px solid #eee;
+}
+
+/* ── STATUS MESSAGE ── */
+.status {
+  padding: 12px 16px; border-radius: 8px; margin: 12px 0;
+  font-size: 0.9rem; display: none;
+}
+.status.success { display: block; background: #d4edda; color: #155724; }
+.status.error { display: block; background: #f8d7da; color: #721c24; }
+
+/* ── HISTORY ── */
+.history-item {
+  background: #fff; border-radius: 8px; padding: 14px;
+  margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.history-item .num { font-weight: bold; color: #1a2e44; }
+.history-item .date { color: #666; font-size: 0.85rem; }
+.history-item .amount { font-weight: bold; font-size: 1.05rem; }
+
+/* ── MISC ── */
+.hint { font-size: 0.78rem; color: #888; margin-top: 4px; }
+.section-title {
+  font-size: 0.8rem; font-weight: bold; text-transform: uppercase;
+  letter-spacing: .08em; color: #3a7d6e; margin: 20px 0 10px;
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP SCREEN (first time only) ============ -->
+<div class="setup-overlay" id="setup-screen" style="display:none;">
+  <div class="setup-card">
+    <h2>Welcome</h2>
+    <p>One-time setup. These details are saved on this phone only and used to generate your invoices.</p>
+
+    <div class="setup-section" style="border:none;margin-top:0;padding-top:0;">Your Details</div>
+    <div class="form-group">
+      <label>Full Name</label>
+      <input id="s-name" value="Joel Walton">
+    </div>
+    <div class="form-group">
+      <label>Address</label>
+      <textarea id="s-address" rows="2" style="width:100%;padding:14px;font-size:1rem;border:2px solid #ddd;border-radius:8px;font-family:inherit;">61 Bumblehole Meadows, Wombourne, West Midlands, WV5 8BG</textarea>
+    </div>
+    <div class="form-group">
+      <label>Mobile</label>
+      <input id="s-mobile" value="07453 992257">
+    </div>
+    <div class="form-group">
+      <label>UTR Number</label>
+      <input id="s-utr" value="60523 38059">
+    </div>
+
+    <div class="setup-section">Bank Details (for payment instructions on invoice)</div>
+    <div class="form-group">
+      <label>Bank Name</label>
+      <input id="s-bank" value="Nationwide Building Society">
+    </div>
+    <div class="form-group">
+      <label>Account Name</label>
+      <input id="s-accname" value="Joel Walton">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Sort Code</label>
+        <input id="s-sort" value="07-04-36">
+      </div>
+      <div class="form-group">
+        <label>Account Number</label>
+        <input id="s-accnum" value="37190054">
+      </div>
+    </div>
+
+    <div class="setup-section">Contractor (who you invoice)</div>
+    <div class="form-group">
+      <label>Contractor Name</label>
+      <input id="s-contractor" value="Mark Lacey Office Interiors Ltd">
+    </div>
+    <div class="form-group">
+      <label>Contractor Email</label>
+      <input id="s-cont-email" type="email" value="tinalwalton@yahoo.co.uk">
+    </div>
+
+    <div class="setup-section">Email</div>
+    <div class="form-group">
+      <label>Family Email (CC for records)</label>
+      <input id="s-family-email" type="email" value="walton_family@outlook.com">
+    </div>
+
+    <div class="setup-section">Starting Numbers</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Last Invoice #</label>
+        <input id="s-last-inv" type="number" value="0">
+        <div class="hint">Next will be #0001</div>
+      </div>
+      <div class="form-group">
+        <label>Last Expense #</label>
+        <input id="s-last-exp" type="number" value="0">
+        <div class="hint">Next will be #0001</div>
+      </div>
+    </div>
+
+    <div class="setup-section">Defaults</div>
+    <div class="form-group">
+      <label>Day Rate (pounds)</label>
+      <input id="s-dayrate" type="number" value="90">
+    </div>
+
+    <button class="btn btn-primary" onclick="saveSetup()" style="margin-top:20px;">Save &amp; Start</button>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div id="main-app" style="display:none;">
+
+  <div class="header">
+    <h1>JT Walton</h1>
+    <span style="font-size:0.75rem;opacity:.6;">2026-27</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('invoice')">Invoice</div>
+    <div class="tab" onclick="switchTab('expense')">Expense</div>
+    <div class="tab" onclick="switchTab('history')">History</div>
+    <div class="tab" onclick="switchTab('settings')">Settings</div>
+  </div>
+
+  <!-- ── INVOICE TAB ── -->
+  <div class="panel active" id="panel-invoice">
+    <div class="section-title">New Invoice</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Invoice #</label>
+        <input id="inv-num" readonly style="background:#f0f2f5;font-weight:bold;">
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input id="inv-date" type="date">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Days Worked</label>
+        <input id="inv-days" type="number" min="0" max="7" step="0.5" placeholder="5" oninput="calcInvoice()">
+      </div>
+      <div class="form-group">
+        <label>Day Rate</label>
+        <input id="inv-rate" type="number" oninput="calcInvoice()">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <input id="inv-desc" value="Labour" placeholder="e.g. Labour - Thomas Telford UTC">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Overtime / Other</label>
+        <input id="inv-overtime" type="number" value="0" min="0" step="0.01" oninput="calcInvoice()">
+      </div>
+      <div class="form-group">
+        <label>Materials</label>
+        <input id="inv-materials" type="number" value="0" min="0" step="0.01" oninput="calcInvoice()">
+      </div>
+    </div>
+
+    <div class="summary" id="inv-summary">
+      <div class="summary-row"><span>Labour</span><span id="sum-labour">-</span></div>
+      <div class="summary-row"><span>Overtime / Other</span><span id="sum-overtime">-</span></div>
+      <div class="summary-row"><span>Materials</span><span id="sum-materials">-</span></div>
+      <div class="summary-row total"><span>Gross Total</span><span id="sum-gross">-</span></div>
+      <div class="summary-row cis"><span>CIS Deduction (20% of labour + overtime)</span><span id="sum-cis">-</span></div>
+      <div class="summary-row net"><span>Net Payable</span><span id="sum-net">-</span></div>
+    </div>
+
+    <button class="btn btn-send" onclick="sendInvoice()">1. Download Invoice PDF</button>
+
+    <a id="inv-email-btn" class="btn btn-send" style="display:none; margin-top:10px; background:#2a6f5f;" href="#">2. Open Email (attach the PDF)</a>
+
+    <div class="status" id="inv-status"></div>
+  </div>
+
+  <!-- ── EXPENSE TAB ── -->
+  <div class="panel" id="panel-expense">
+    <div class="section-title">New Expense</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Expense #</label>
+        <input id="exp-num" readonly style="background:#f0f2f5;font-weight:bold;">
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input id="exp-date" type="date">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Supplier / Shop</label>
+      <input id="exp-supplier" placeholder="e.g. Screwfix">
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <input id="exp-desc" placeholder="e.g. Safety Boots Size 8">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Category</label>
+        <select id="exp-category">
+          <option value="Tools & Equipment">Tools & Equipment</option>
+          <option value="Work Clothing & PPE" selected>Work Clothing & PPE</option>
+          <option value="Vehicle / Mileage">Vehicle / Mileage</option>
+          <option value="Phone">Phone</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount</label>
+        <input id="exp-amount" type="number" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+
+    <button class="btn btn-send" onclick="sendExpense()">Send Expense</button>
+
+    <div class="status" id="exp-status"></div>
+  </div>
+
+  <!-- ── HISTORY TAB ── -->
+  <div class="panel" id="panel-history">
+    <div class="section-title">Recent Invoices</div>
+    <div id="inv-history"></div>
+    <div class="section-title" style="margin-top:24px;">Recent Expenses</div>
+    <div id="exp-history"></div>
+    <button class="btn btn-outline" onclick="clearHistory()" style="margin-top:20px;font-size:0.85rem;">Clear History</button>
+  </div>
+
+  <!-- ── SETTINGS TAB ── -->
+  <div class="panel" id="panel-settings">
+
+    <div class="section-title">Day Rate</div>
+    <div class="form-group">
+      <label>Current Day Rate (pounds)</label>
+      <input id="cfg-dayrate" type="number" oninput="saveQuickSetting()">
+      <div class="hint">Changes apply to your next invoice</div>
+    </div>
+
+    <div class="section-title">Bank Details</div>
+    <div class="form-group">
+      <label>Bank Name</label>
+      <input id="cfg-bank" oninput="saveQuickSetting()">
+    </div>
+    <div class="form-group">
+      <label>Account Name</label>
+      <input id="cfg-accname" oninput="saveQuickSetting()">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Sort Code</label>
+        <input id="cfg-sort" oninput="saveQuickSetting()">
+      </div>
+      <div class="form-group">
+        <label>Account Number</label>
+        <input id="cfg-accnum" oninput="saveQuickSetting()">
+      </div>
+    </div>
+
+    <div class="section-title">Contractor</div>
+    <div class="form-group">
+      <label>Contractor Name</label>
+      <input id="cfg-contractor" oninput="saveQuickSetting()">
+    </div>
+    <div class="form-group">
+      <label>Contractor Email</label>
+      <input id="cfg-cont-email" type="email" oninput="saveQuickSetting()">
+    </div>
+
+    <div class="section-title">Your Details</div>
+    <div class="form-group">
+      <label>Full Name</label>
+      <input id="cfg-name" oninput="saveQuickSetting()">
+    </div>
+    <div class="form-group">
+      <label>Mobile</label>
+      <input id="cfg-mobile" oninput="saveQuickSetting()">
+    </div>
+    <div class="form-group">
+      <label>Address</label>
+      <textarea id="cfg-address" rows="2" style="width:100%;padding:14px;font-size:1rem;border:2px solid #ddd;border-radius:8px;font-family:inherit;" oninput="saveQuickSetting()"></textarea>
+    </div>
+    <div class="form-group">
+      <label>UTR Number</label>
+      <input id="cfg-utr" oninput="saveQuickSetting()">
+    </div>
+
+    <div class="section-title">Email Addresses</div>
+    <div class="form-group">
+      <label>Family Email (CC for records)</label>
+      <input id="cfg-family-email" type="email" oninput="saveQuickSetting()">
+    </div>
+
+    <div class="section-title" style="margin-top:32px;color:#c0392b;">Reset</div>
+    <button class="btn btn-outline" style="border-color:#c0392b;color:#c0392b;font-size:0.85rem;" onclick="resetAll()">Reset All Data &amp; Start Fresh</button>
+    <div class="hint">Clears all settings, history and numbering from this phone. Use this when starting a new tax year.</div>
+
+    <div class="status" id="cfg-status"></div>
+  </div>
+
+</div>
+
+<script>
+// ── CONFIG & STATE ──────────────────────────────────────────────────
+const STORAGE_KEY = 'jtwalton_config';
+const HISTORY_KEY = 'jtwalton_history';
+
+let config = {};
+let history = { invoices: [], expenses: [] };
+
+function loadConfig() {
+  try { config = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { config = {}; }
+  try { history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || { invoices: [], expenses: [] }; } catch(e) { history = { invoices: [], expenses: [] }; }
+}
+
+function saveConfig() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+}
+
+function saveHistory() {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+// ── SETUP ───────────────────────────────────────────────────────────
+function showSetup() {
+  document.getElementById('setup-screen').style.display = '';
+  document.getElementById('main-app').style.display = 'none';
+  // Fill form with current config
+  if (config.name) {
+    document.getElementById('s-name').value = config.name || '';
+    document.getElementById('s-address').value = config.address || '';
+    document.getElementById('s-mobile').value = config.mobile || '';
+    document.getElementById('s-utr').value = config.utr || '';
+    document.getElementById('s-bank').value = config.bank || '';
+    document.getElementById('s-accname').value = config.accName || '';
+    document.getElementById('s-sort').value = config.sortCode || '';
+    document.getElementById('s-accnum').value = config.accNum || '';
+    document.getElementById('s-contractor').value = config.contractor || '';
+    document.getElementById('s-cont-email').value = config.contractorEmail || '';
+    document.getElementById('s-family-email').value = config.familyEmail || '';
+    document.getElementById('s-dayrate').value = config.dayRate || 90;
+    document.getElementById('s-last-inv').value = (config.nextInvoice || 34) - 1;
+    document.getElementById('s-last-exp').value = (config.nextExpense || 5) - 1;
+  }
+}
+
+function saveSetup() {
+  config.name = document.getElementById('s-name').value.trim();
+  config.address = document.getElementById('s-address').value.trim();
+  config.mobile = document.getElementById('s-mobile').value.trim();
+  config.utr = document.getElementById('s-utr').value.trim();
+  config.bank = document.getElementById('s-bank').value.trim();
+  config.accName = document.getElementById('s-accname').value.trim();
+  config.sortCode = document.getElementById('s-sort').value.trim();
+  config.accNum = document.getElementById('s-accnum').value.trim();
+  config.contractor = document.getElementById('s-contractor').value.trim();
+  config.contractorEmail = document.getElementById('s-cont-email').value.trim();
+  config.familyEmail = document.getElementById('s-family-email').value.trim();
+  config.dayRate = parseFloat(document.getElementById('s-dayrate').value) || 90;
+  config.nextInvoice = (parseInt(document.getElementById('s-last-inv').value) || 0) + 1;
+  config.nextExpense = (parseInt(document.getElementById('s-last-exp').value) || 0) + 1;
+
+  saveConfig();
+  initApp();
+}
+
+// ── APP INIT ────────────────────────────────────────────────────────
+function initApp() {
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = '';
+
+  // Set invoice defaults
+  document.getElementById('inv-num').value = pad4(config.nextInvoice);
+  document.getElementById('inv-date').value = todayStr();
+  document.getElementById('inv-rate').value = config.dayRate || 90;
+  document.getElementById('inv-days').value = '';
+  document.getElementById('inv-desc').value = 'Labour';
+  document.getElementById('inv-overtime').value = '0';
+  document.getElementById('inv-materials').value = '0';
+
+  // Set expense defaults
+  document.getElementById('exp-num').value = pad4(config.nextExpense);
+  document.getElementById('exp-date').value = todayStr();
+
+  calcInvoice();
+  renderHistory();
+}
+
+// ── TABS ────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'settings') loadSettingsTab();
+}
+
+// ── INVOICE CALCULATION ─────────────────────────────────────────────
+function calcInvoice() {
+  const days = parseFloat(document.getElementById('inv-days').value) || 0;
+  const rate = parseFloat(document.getElementById('inv-rate').value) || 0;
+  const overtime = parseFloat(document.getElementById('inv-overtime').value) || 0;
+  const materials = parseFloat(document.getElementById('inv-materials').value) || 0;
+
+  const labour = days * rate;
+  const gross = labour + overtime + materials;
+  const cis = (labour + overtime) * 0.2;
+  const net = gross - cis;
+
+  document.getElementById('sum-labour').textContent = money(labour);
+  document.getElementById('sum-overtime').textContent = money(overtime);
+  document.getElementById('sum-materials').textContent = money(materials);
+  document.getElementById('sum-gross').textContent = money(gross);
+  document.getElementById('sum-cis').textContent = money(cis);
+  document.getElementById('sum-net').textContent = money(net);
+}
+
+// ── SEND INVOICE (generate PDF + share to Mark + email data to family) ──
+function sendInvoice() {
+  const num = document.getElementById('inv-num').value;
+  const date = document.getElementById('inv-date').value;
+  const days = parseFloat(document.getElementById('inv-days').value) || 0;
+  const rate = parseFloat(document.getElementById('inv-rate').value) || 0;
+  const desc = document.getElementById('inv-desc').value.trim() || 'Labour';
+  const overtime = parseFloat(document.getElementById('inv-overtime').value) || 0;
+  const materials = parseFloat(document.getElementById('inv-materials').value) || 0;
+
+  if (!days || !date) {
+    showStatus('inv-status', 'Please enter days worked and date.', 'error');
+    return;
+  }
+
+  const labour = days * rate;
+  const gross = labour + overtime + materials;
+  const cis = (labour + overtime) * 0.2;
+  const net = gross - cis;
+
+  // ── Build PDF (matching existing invoice style) ──
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const w = doc.internal.pageSize.getWidth();
+  const m = 22;
+  let y = 25;
+
+  // "JT Walton" header - large bold dark blue
+  doc.setFontSize(32);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(26, 46, 68);
+  doc.text('JT Walton', m, y);
+  y += 5;
+
+  // Dark blue rule line
+  doc.setDrawColor(26, 46, 68);
+  doc.setLineWidth(1.2);
+  doc.line(m, y, w - m, y);
+  y += 14;
+
+  // "To:" and contractor on left
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(60, 60, 60);
+  doc.text('To:', m, y);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(20, 20, 20);
+  doc.text(config.contractor, m, y + 6);
+
+  // "INVOICE" title on right - large bold dark blue
+  doc.setFontSize(28);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(26, 46, 68);
+  doc.text('INVOICE', w - m, y - 2, { align: 'right' });
+
+  // Invoice # and date below INVOICE title
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(20, 20, 20);
+  doc.text('INVOICE #' + num, w - m, y + 8, { align: 'right' });
+  doc.text('DATE: ' + formatDateLong(date), w - m, y + 14, { align: 'right' });
+  y += 28;
+
+  // ── WORK COMPLETED table ──
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(58, 125, 110);
+  doc.text('WORK COMPLETED (SUBJECT TO CIS):', m, y);
+  y += 3;
+
+  const labDesc = days + ' Days ' + desc;
+  const labourBodyRows = [[days, labDesc, money(rate), money(labour)]];
+  if (overtime > 0) {
+    labourBodyRows.push([1, 'Overtime', '', money(overtime)]);
+  }
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: m, right: m },
+    head: [['QUANTITY', 'DATES & DESCRIPTION OF WORKS COMPLETED', 'UNIT PRICE', 'TOTAL']],
+    body: labourBodyRows,
+    foot: [['', '', 'TOTAL', money(labour + overtime)]],
+    styles: { fontSize: 9, cellPadding: { top: 4, bottom: 4, left: 5, right: 5 }, textColor: [30, 30, 30], lineColor: [180, 180, 180], lineWidth: 0.3 },
+    headStyles: { fillColor: [244, 244, 244], textColor: [50, 50, 50], fontStyle: 'bold' },
+    footStyles: { fillColor: [255, 255, 255], fontStyle: 'bold', halign: 'right' },
+    columnStyles: {
+      0: { cellWidth: 22, halign: 'left' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 26, halign: 'right' },
+      3: { cellWidth: 26, halign: 'right' }
+    },
+    theme: 'grid'
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  // ── MATERIALS table ──
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(58, 125, 110);
+  doc.text('MATERIALS (EXEMPT FROM CIS):', m, y);
+  y += 3;
+
+  const matBodyRows = materials > 0 ? [['', 'Materials supplied', '', money(materials)]] : [['', '', '', '']];
+  doc.autoTable({
+    startY: y,
+    margin: { left: m, right: m },
+    head: [['QUANTITY', 'DATES & DESCRIPTION OF GOODS PURCHASED', 'UNIT PRICE', 'TOTAL']],
+    body: matBodyRows,
+    foot: [['', '', 'TOTAL', materials > 0 ? money(materials) : '']],
+    styles: { fontSize: 9, cellPadding: { top: 4, bottom: 4, left: 5, right: 5 }, textColor: [30, 30, 30], lineColor: [180, 180, 180], lineWidth: 0.3 },
+    headStyles: { fillColor: [244, 244, 244], textColor: [50, 50, 50], fontStyle: 'bold' },
+    footStyles: { fillColor: [255, 255, 255], fontStyle: 'bold', halign: 'right' },
+    columnStyles: {
+      0: { cellWidth: 22, halign: 'left' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 26, halign: 'right' },
+      3: { cellWidth: 26, halign: 'right' }
+    },
+    theme: 'grid'
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  // ── PAYMENT SUMMARY table ──
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(58, 125, 110);
+  doc.text('PAYMENT SUMMARY', m, y);
+  y += 3;
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: m, right: m },
+    body: [
+      [{ content: 'GROSS TOTAL (Total Labour and Materials)', styles: { fontStyle: 'bold' } }, money(gross)],
+      [{ content: 'TAX DEDUCTION (This invoice is subject to the Construction Industry Scheme (CIS). 20% of labour costs only to be paid directly to HMRC by Contractor under UTR ' + config.utr + ')', styles: { fontStyle: 'bold' } }, money(cis)],
+      [{ content: 'NET AMOUNT TO PAY', styles: { fontStyle: 'bold', fontSize: 10 } }, { content: money(net), styles: { fontStyle: 'bold', fontSize: 10 } }],
+      [{ content: 'STATUS', styles: { fontStyle: 'bold' } }, { content: 'Due on receipt', styles: { textColor: [46, 125, 82], fontStyle: 'bold' } }]
+    ],
+    styles: { fontSize: 9, cellPadding: { top: 5, bottom: 5, left: 6, right: 6 }, textColor: [30, 30, 30], lineColor: [180, 180, 180], lineWidth: 0.3 },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 30, halign: 'right' }
+    },
+    didParseCell: function(data) {
+      if (data.row.index === 1) data.cell.styles.fillColor = [249, 244, 232];
+      if (data.row.index === 3) data.cell.styles.fillColor = [240, 250, 245];
+    },
+    theme: 'grid'
+  });
+  y = doc.lastAutoTable.finalY + 12;
+
+  // ── Payment Instructions ──
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(58, 125, 110);
+  doc.text('Payment Instructions:', m, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(30, 30, 30);
+  doc.text(config.bank, m, y);
+  y += 6;
+
+  // Account details in a row
+  doc.setFont('helvetica', 'normal');
+  doc.text('Account Name:', m, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(config.accName, m + 30, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Sort Code:', m + 65, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(config.sortCode, m + 85, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Account Number:', m + 105, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(config.accNum, m + 135, y);
+
+  // ── Footer ──
+  y = 275;
+  doc.setDrawColor(160, 160, 160);
+  doc.setLineWidth(0.3);
+  doc.line(m, y, w - m, y);
+  y += 5;
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text(config.name + ', ' + config.address + '  |  Mobile: ' + config.mobile + '  |  UTR: ' + config.utr, w / 2, y, { align: 'center' });
+
+  // ── Create PDF file ──
+  const [yr, mo, dy] = date.split('-');
+  const filename = 'JT Walton Invoice ' + num + ' ' + dy + mo + yr + '.pdf';
+  const pdfBlob = doc.output('blob');
+  const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+  const dateLong = formatDateLong(date);
+
+  // ── Structured data for family email ──
+  const invoiceData = [num, date, days, rate, labour.toFixed(2), overtime.toFixed(2),
+    materials.toFixed(2), gross.toFixed(2), cis.toFixed(2), net.toFixed(2), desc].join('|');
+
+  const familySubject = 'Invoice #' + num + ' - ' + dateLong;
+  const familyBody = 'Invoice Record\n\n' +
+    'Invoice #: ' + num + '\n' +
+    'Date: ' + dateLong + '\n' +
+    'Days: ' + days + ' @ ' + money(rate) + '/day\n' +
+    'Labour: ' + money(labour) + '\n' +
+    'Overtime: ' + money(overtime) + '\n' +
+    'Materials: ' + money(materials) + '\n' +
+    'Gross: ' + money(gross) + '\n' +
+    'CIS Deducted: ' + money(cis) + '\n' +
+    'Net Payable: ' + money(net) + '\n' +
+    'Description: ' + desc + '\n\n' +
+    '---INVOICE-DATA---\n' + invoiceData + '\n---END-DATA---';
+
+  // Step 1: download the PDF. Step 2 (open email) is a separate button so Joel can verify
+  // the download finished before being switched into Outlook.
+  doc.save(filename);
+
+  const mailtoUrl = 'mailto:' + encodeURIComponent(config.contractorEmail) +
+    '?cc=' + encodeURIComponent(config.familyEmail) +
+    '&subject=' + encodeURIComponent('Invoice #' + num + ' - ' + dateLong) +
+    '&body=' + encodeURIComponent('Please find attached Invoice #' + num + '.\n\n' + familyBody);
+
+  const emailBtn = document.getElementById('inv-email-btn');
+  emailBtn.href = mailtoUrl;
+  emailBtn.style.display = 'block';
+
+  showStatus('inv-status', 'PDF saved as "' + filename + '" in Downloads. Tap button 2 to open the email, then attach the PDF.', 'success');
+
+  // Save to history and increment
+  history.invoices.unshift({
+    num, date, days, rate, labour, overtime, materials, gross, cis, net, desc,
+    sent: new Date().toISOString()
+  });
+  if (history.invoices.length > 100) history.invoices = history.invoices.slice(0, 100);
+  saveHistory();
+
+  config.nextInvoice = (parseInt(num) || 0) + 1;
+  saveConfig();
+
+  setTimeout(() => {
+    document.getElementById('inv-num').value = pad4(config.nextInvoice);
+    document.getElementById('inv-days').value = '';
+    document.getElementById('inv-desc').value = 'Labour';
+    document.getElementById('inv-overtime').value = '0';
+    document.getElementById('inv-materials').value = '0';
+    calcInvoice();
+    renderHistory();
+    document.getElementById('inv-email-btn').style.display = 'none';
+  }, 30000);
+}
+
+// ── EXPENSE ─────────────────────────────────────────────────────────
+function sendExpense() {
+  const num = document.getElementById('exp-num').value;
+  const date = document.getElementById('exp-date').value;
+  const supplier = document.getElementById('exp-supplier').value.trim();
+  const desc = document.getElementById('exp-desc').value.trim();
+  const category = document.getElementById('exp-category').value;
+  const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+
+  if (!supplier || !desc || !amount || !date) {
+    showStatus('exp-status', 'Please fill in all fields.', 'error');
+    return;
+  }
+
+  const dateLong = formatDateLong(date);
+  const [yr, mo, dy] = date.split('-');
+
+  const subject = 'Expense #' + num + ' - ' + supplier + ' - ' + dateLong;
+
+  const body = 'Expense Record\n\n' +
+    'Expense #: ' + num + '\n' +
+    'Date: ' + dateLong + '\n' +
+    'Supplier: ' + supplier + '\n' +
+    'Description: ' + desc + '\n' +
+    'Category: ' + category + '\n' +
+    'Amount: ' + money(amount) + '\n\n' +
+    'Please reply with the receipt photo attached, or file as:\n' +
+    'JT Walton Expense ' + num + ' ' + dy + mo + yr + '.pdf\n\n' +
+    '---EXPENSE-DATA---\n' +
+    [num, date, supplier, desc, category, amount.toFixed(2)].join('|') + '\n' +
+    '---END-DATA---';
+
+  const mailto = 'mailto:' + encodeURIComponent(config.familyEmail) +
+    '?subject=' + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(body);
+
+  window.location.href = mailto;
+
+  // Save to history and increment
+  history.expenses.unshift({
+    num, date, supplier, desc, category, amount,
+    sent: new Date().toISOString()
+  });
+  if (history.expenses.length > 100) history.expenses = history.expenses.slice(0, 100);
+  saveHistory();
+
+  config.nextExpense = (parseInt(num) || 0) + 1;
+  saveConfig();
+
+  setTimeout(() => {
+    document.getElementById('exp-num').value = pad4(config.nextExpense);
+    document.getElementById('exp-supplier').value = '';
+    document.getElementById('exp-desc').value = '';
+    document.getElementById('exp-amount').value = '';
+    showStatus('exp-status', 'Expense #' + num + ' sent to ' + config.familyEmail, 'success');
+    renderHistory();
+  }, 1000);
+}
+
+// ── HISTORY ─────────────────────────────────────────────────────────
+function renderHistory() {
+  const invDiv = document.getElementById('inv-history');
+  const expDiv = document.getElementById('exp-history');
+
+  if (!history.invoices.length) {
+    invDiv.innerHTML = '<div style="color:#999;font-size:0.9rem;padding:10px;">No invoices yet</div>';
+  } else {
+    invDiv.innerHTML = history.invoices.slice(0, 20).map(inv => `
+      <div class="history-item">
+        <div>
+          <div class="num">#${inv.num}</div>
+          <div class="date">${formatDateShort(inv.date)} - ${inv.days} days</div>
+        </div>
+        <div class="amount">${money(inv.net)}</div>
+      </div>
+    `).join('');
+  }
+
+  if (!history.expenses.length) {
+    expDiv.innerHTML = '<div style="color:#999;font-size:0.9rem;padding:10px;">No expenses yet</div>';
+  } else {
+    expDiv.innerHTML = history.expenses.slice(0, 20).map(exp => `
+      <div class="history-item">
+        <div>
+          <div class="num">#${exp.num}</div>
+          <div class="date">${formatDateShort(exp.date)} - ${exp.supplier}</div>
+        </div>
+        <div class="amount">${money(exp.amount)}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function clearHistory() {
+  if (confirm('Clear all history from this device? (This does not delete any emails or spreadsheet data)')) {
+    history = { invoices: [], expenses: [] };
+    saveHistory();
+    renderHistory();
+  }
+}
+
+// ── SETTINGS TAB ────────────────────────────────────────────────────
+function loadSettingsTab() {
+  document.getElementById('cfg-dayrate').value = config.dayRate || 90;
+  document.getElementById('cfg-bank').value = config.bank || '';
+  document.getElementById('cfg-accname').value = config.accName || '';
+  document.getElementById('cfg-sort').value = config.sortCode || '';
+  document.getElementById('cfg-accnum').value = config.accNum || '';
+  document.getElementById('cfg-contractor').value = config.contractor || '';
+  document.getElementById('cfg-cont-email').value = config.contractorEmail || '';
+  document.getElementById('cfg-name').value = config.name || '';
+  document.getElementById('cfg-mobile').value = config.mobile || '';
+  document.getElementById('cfg-address').value = config.address || '';
+  document.getElementById('cfg-utr').value = config.utr || '';
+  document.getElementById('cfg-family-email').value = config.familyEmail || '';
+}
+
+function saveQuickSetting() {
+  config.dayRate = parseFloat(document.getElementById('cfg-dayrate').value) || 90;
+  config.bank = document.getElementById('cfg-bank').value.trim();
+  config.accName = document.getElementById('cfg-accname').value.trim();
+  config.sortCode = document.getElementById('cfg-sort').value.trim();
+  config.accNum = document.getElementById('cfg-accnum').value.trim();
+  config.contractor = document.getElementById('cfg-contractor').value.trim();
+  config.contractorEmail = document.getElementById('cfg-cont-email').value.trim();
+  config.name = document.getElementById('cfg-name').value.trim();
+  config.mobile = document.getElementById('cfg-mobile').value.trim();
+  config.address = document.getElementById('cfg-address').value.trim();
+  config.utr = document.getElementById('cfg-utr').value.trim();
+  config.familyEmail = document.getElementById('cfg-family-email').value.trim();
+  saveConfig();
+
+  // Update the invoice day rate field to match
+  document.getElementById('inv-rate').value = config.dayRate;
+  calcInvoice();
+
+  showStatus('cfg-status', 'Saved', 'success');
+}
+
+// ── RESET ───────────────────────────────────────────────────────────
+function resetAll() {
+  if (confirm('This will clear all settings and history from this phone. Are you sure?')) {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    config = {};
+    history = { invoices: [], expenses: [] };
+    showSetup();
+  }
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────────
+function pad4(n) { return String(n).padStart(4, '0'); }
+
+function money(n) {
+  return '\u00A3' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function formatDateLong(s) {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return parseInt(d) + ' ' + months[parseInt(m) - 1] + ' ' + y;
+}
+
+function formatDateShort(s) {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return parseInt(d) + ' ' + months[parseInt(m) - 1] + ' ' + y;
+}
+
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status ' + type;
+  setTimeout(() => { el.className = 'status'; }, 8000);
+}
+
+// ── BOOT ────────────────────────────────────────────────────────────
+loadConfig();
+if (config.name) {
+  initApp();
+} else {
+  document.getElementById('setup-screen').style.display = '';
+}
+</script>
+</body>
+</html>
