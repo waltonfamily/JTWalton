@@ -575,9 +575,13 @@ body {
       <input id="cfg-family-email" type="email" oninput="saveQuickSetting()">
     </div>
 
+    <div class="section-title" style="margin-top:24px;">New Tax Year</div>
+    <button class="btn btn-outline" style="font-size:0.9rem;" onclick="startNewTaxYear()">Start New Tax Year</button>
+    <div class="hint">Resets invoice, expense and mileage counters back to #0001 and clears the app's History tab. OneDrive PDFs and prior-year CSVs are kept (they are per-tax-year). Use this on or after 6 April.</div>
+
     <div class="section-title" style="margin-top:32px;color:#c0392b;">Reset</div>
     <button class="btn btn-outline" style="border-color:#c0392b;color:#c0392b;font-size:0.85rem;" onclick="resetAll()">Reset All Data &amp; Start Fresh</button>
-    <div class="hint">Clears all settings, history and numbering from this phone. Use this when starting a new tax year.</div>
+    <div class="hint">Wipes ALL settings, rates and history from this phone (full re-setup). Does not touch OneDrive. Usually you want "Start New Tax Year" instead.</div>
 
     <div class="status" id="cfg-status"></div>
   </div>
@@ -1697,11 +1701,67 @@ function renderHistory() {
   }
 }
 
-function clearHistory() {
-  if (confirm('Clear all history from this device? (This does not delete any emails or spreadsheet data)')) {
+function historyTaxYears() {
+  const years = new Set();
+  for (const rec of [...history.invoices, ...history.expenses, ...history.mileage]) {
+    if (rec.date) years.add(taxYearFromDate(rec.date));
+  }
+  years.add(taxYearFromDate(todayStr()));
+  return Array.from(years);
+}
+
+async function truncateCsv(path, header) {
+  const token = await msGetToken();
+  const metaUrl = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(path);
+  const meta = await fetch(metaUrl, { headers: { 'Authorization': 'Bearer ' + token } });
+  if (meta.status === 404) return;
+  if (!meta.ok) throw new Error('Check failed (' + path + '): ' + meta.status);
+  const contentUrl = metaUrl + ':/content';
+  const putRes = await fetch(contentUrl, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/csv' },
+    body: header
+  });
+  if (!putRes.ok) throw new Error('Truncate failed (' + path + '): ' + putRes.status);
+}
+
+async function truncateAllCsvs() {
+  const years = historyTaxYears();
+  const invHeader = 'Date,Number,Description,Days,Rate,Labour,Overtime,Materials,Gross,CIS,Net,Status,PDFPath\n';
+  const expHeader = 'Date,Number,Supplier,Description,Category,Amount,Status,PDFPath\n';
+  const milHeader = 'Date,Number,From,To,Purpose,Miles,CumulativeMiles,RateBreakdown,Claim\n';
+  for (const y of years) {
+    await truncateCsv('JT Walton/Accounts/JT Walton Invoices ' + y + '.csv', invHeader);
+    await truncateCsv('JT Walton/Accounts/JT Walton Expenses ' + y + '.csv', expHeader);
+    await truncateCsv('JT Walton/Mileage/JT Walton Mileage ' + y + '.csv', milHeader);
+  }
+}
+
+async function clearHistory() {
+  const years = historyTaxYears().sort().join(', ');
+  const msg = 'Clear ALL history?\n\n' +
+    'This will:\n' +
+    '\u2022 Empty the app History tab\n' +
+    '\u2022 Empty the Invoices, Expenses and Mileage CSVs on OneDrive for tax year(s): ' + years + '\n\n' +
+    'Invoice and receipt PDFs in OneDrive will be kept.\n' +
+    'Sent emails are not affected.\n\n' +
+    'This cannot be undone. Continue?';
+  if (!confirm(msg)) return;
+  if (!msAccount) {
+    showOverlayMessage('Sign in to Microsoft', 'You need to be signed in to clear the OneDrive spreadsheets.');
+    return;
+  }
+  try {
+    showOverlay('Clearing history...');
+    updateOverlay('Emptying spreadsheets on OneDrive...');
+    await truncateAllCsvs();
     history = { invoices: [], expenses: [], mileage: [] };
     saveHistory();
     renderHistory();
+    showOverlayDone('History cleared', 'App history and spreadsheet rows emptied. PDFs and emails kept.');
+  } catch (err) {
+    console.error(err);
+    showOverlayError(err.message);
   }
 }
 
@@ -1768,6 +1828,37 @@ function saveQuickSetting() {
   showStatus('cfg-status', 'Saved', 'success');
 }
 
+// ── NEW TAX YEAR ────────────────────────────────────────────────────
+function startNewTaxYear() {
+  const taxYear = taxYearFromDate(todayStr());
+  const msg = 'Start tax year ' + taxYear + '?\n\n' +
+    'This will:\n' +
+    '\u2022 Reset invoice counter to #0001\n' +
+    '\u2022 Reset expense counter to #0001\n' +
+    '\u2022 Reset mileage counter to #0001\n' +
+    '\u2022 Clear the app History tab\n\n' +
+    'OneDrive PDFs and prior-year CSVs are kept — this is a clean slate for the new year only.\n\n' +
+    'Continue?';
+  if (!confirm(msg)) return;
+
+  config.nextInvoice = 1;
+  config.nextExpense = 1;
+  config.nextMileage = 1;
+  saveConfig();
+
+  history = { invoices: [], expenses: [], mileage: [] };
+  saveHistory();
+
+  document.getElementById('inv-num').value = pad4(config.nextInvoice);
+  document.getElementById('exp-num').value = pad4(config.nextExpense);
+  document.getElementById('mil-num').value = pad4(config.nextMileage);
+  updateExpenseHint();
+  calcMileage();
+  renderHistory();
+
+  showOverlayDone('Tax year ' + taxYear + ' started', 'Counters reset to #0001 and app history cleared. OneDrive records kept.');
+}
+
 // ── RESET ───────────────────────────────────────────────────────────
 function resetAll() {
   if (confirm('This will clear all settings and history from this phone. Are you sure?')) {
@@ -1829,6 +1920,7 @@ function updateOverlay(text) {
 }
 
 function showOverlayDone(text, sub) {
+  document.getElementById('processing-overlay').style.display = 'flex';
   document.getElementById('overlay-icon').innerHTML = '<div style="font-size:60px;color:#2a7d5f;line-height:1;">✓</div>';
   document.getElementById('overlay-text').textContent = text;
   document.getElementById('overlay-text').style.color = '#2a7d5f';
