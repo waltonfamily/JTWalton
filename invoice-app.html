@@ -15,6 +15,31 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* ── PROCESSING OVERLAY ── */
+#processing-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 20, 35, 0.82); z-index: 9999;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.overlay-card {
+  background: #fff; padding: 36px 32px; border-radius: 16px;
+  max-width: 360px; width: 100%; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.overlay-card #overlay-icon { margin-bottom: 16px; min-height: 60px; display: flex; align-items: center; justify-content: center; }
+.overlay-card #overlay-text { font-size: 1.15rem; font-weight: bold; color: #1a2e44; margin-bottom: 8px; }
+.overlay-card #overlay-sub { font-size: 0.9rem; color: #666; }
+.overlay-card #overlay-close {
+  margin-top: 20px; background: #1a2e44; color: #fff; border: none;
+  padding: 10px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer;
+}
+.spinner {
+  width: 50px; height: 50px; border: 5px solid #e0e6ed;
+  border-top-color: #3a7d6e; border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ── HEADER ── */
 .header {
   background: #1a2e44; color: #fff; padding: 16px 20px;
@@ -30,16 +55,18 @@ body {
 
 /* ── TABS ── */
 .tabs {
-  display: flex; background: #2c3e50;
+  display: flex;
+  background: linear-gradient(90deg, #1e40af, #2563eb, #3b82f6);
   position: sticky; top: 56px; z-index: 99;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .tab {
-  flex: 1; padding: 14px; text-align: center;
-  color: rgba(255,255,255,.6); font-weight: bold; font-size: 0.95rem;
+  flex: 1; padding: 14px 6px; text-align: center;
+  color: rgba(255,255,255,.8); font-weight: bold; font-size: 0.85rem;
   cursor: pointer; border-bottom: 3px solid transparent;
   transition: all .2s;
 }
-.tab.active { color: #fff; border-bottom-color: #3a7d6e; background: rgba(255,255,255,.05); }
+.tab.active { color: #fff; border-bottom-color: #fff; background: rgba(255,255,255,.18); }
 
 /* ── PANELS ── */
 .panel { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
@@ -225,6 +252,16 @@ body {
   </div>
 </div>
 
+<!-- ============ PROCESSING OVERLAY ============ -->
+<div id="processing-overlay">
+  <div class="overlay-card">
+    <div id="overlay-icon"><div class="spinner"></div></div>
+    <div id="overlay-text">Working...</div>
+    <div id="overlay-sub"></div>
+    <button id="overlay-close" style="display:none;" onclick="hideOverlay()">OK</button>
+  </div>
+</div>
+
 <!-- ============ MAIN APP ============ -->
 <div id="main-app" style="display:none;">
 
@@ -236,6 +273,7 @@ body {
   <div class="tabs">
     <div class="tab active" onclick="switchTab('invoice')">Invoice</div>
     <div class="tab" onclick="switchTab('expense')">Expense</div>
+    <div class="tab" onclick="switchTab('mileage')">Mileage</div>
     <div class="tab" onclick="switchTab('history')">History</div>
     <div class="tab" onclick="switchTab('settings')">Settings</div>
   </div>
@@ -258,7 +296,7 @@ body {
     <div class="form-row">
       <div class="form-group">
         <label>Days Worked</label>
-        <input id="inv-days" type="number" min="0" max="7" step="0.5" placeholder="5" oninput="calcInvoice()">
+        <input id="inv-days" type="number" min="0" max="7" step="0.5" oninput="calcInvoice()">
       </div>
       <div class="form-group">
         <label>Day Rate</label>
@@ -287,7 +325,7 @@ body {
       <div class="summary-row"><span>Overtime / Other</span><span id="sum-overtime">-</span></div>
       <div class="summary-row"><span>Materials</span><span id="sum-materials">-</span></div>
       <div class="summary-row total"><span>Gross Total</span><span id="sum-gross">-</span></div>
-      <div class="summary-row cis"><span>CIS Deduction (20% of labour + overtime)</span><span id="sum-cis">-</span></div>
+      <div class="summary-row cis"><span id="sum-cis-label">CIS Deduction (20% of labour + overtime)</span><span id="sum-cis">-</span></div>
       <div class="summary-row net"><span>Net Payable</span><span id="sum-net">-</span></div>
     </div>
 
@@ -338,16 +376,63 @@ body {
       </div>
     </div>
 
-    <button class="btn btn-send" onclick="document.getElementById('exp-file-upload').click()">Upload PDF / Photo of Receipt</button>
-    <button class="btn btn-send" style="margin-top:8px;" onclick="document.getElementById('exp-file-photo').click()">Take Photo of Receipt</button>
-    <button class="btn btn-outline" style="margin-top:8px;" onclick="submitExpense('later', null)">Add Document Later</button>
+    <button class="btn btn-send" onclick="if(validateExpenseDetails()) document.getElementById('exp-file-upload').click()">Upload PDF of Receipt</button>
+    <button class="btn btn-send" style="margin-top:8px;" onclick="if(validateExpenseDetails()) document.getElementById('exp-file-photo').click()">Take Photo of Receipt</button>
+    <button class="btn btn-outline" style="margin-top:8px;" onclick="if(validateExpenseDetails()) submitExpense('later', null)">Add Document Later</button>
 
     <div class="hint" id="exp-filename-hint" style="margin-top:10px;"></div>
 
-    <input type="file" id="exp-file-upload" accept=".pdf,image/*" style="display:none;" onchange="handleExpenseFile(event, 'upload')">
+    <input type="file" id="exp-file-upload" accept="application/pdf" style="display:none;" onchange="handleExpenseFile(event, 'upload')">
     <input type="file" id="exp-file-photo" accept="image/*" capture="environment" style="display:none;" onchange="handleExpenseFile(event, 'photo')">
 
     <div class="status" id="exp-status"></div>
+  </div>
+
+  <!-- ── MILEAGE TAB ── -->
+  <div class="panel" id="panel-mileage">
+    <div class="section-title">New Mileage Entry</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Entry #</label>
+        <input id="mil-num" readonly style="background:#f0f2f5;font-weight:bold;">
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input id="mil-date" type="date" oninput="calcMileage()">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>From</label>
+      <input id="mil-from" placeholder="e.g. Home">
+    </div>
+
+    <div class="form-group">
+      <label>To</label>
+      <input id="mil-to" placeholder="e.g. Thomas Telford UTC, Wolverhampton">
+    </div>
+
+    <div class="form-group">
+      <label>Purpose</label>
+      <input id="mil-purpose" placeholder="e.g. Site visit - carpentry works">
+    </div>
+
+    <div class="form-group">
+      <label>Miles (total for the trip)</label>
+      <input id="mil-miles" type="number" min="0" step="0.1" oninput="calcMileage()">
+      <div class="hint">Enter round-trip miles if applicable</div>
+    </div>
+
+    <div class="summary" id="mil-summary">
+      <div class="summary-row"><span>YTD miles before this trip</span><span id="mil-ytd">-</span></div>
+      <div class="summary-row"><span>Rate applied</span><span id="mil-rate">-</span></div>
+      <div class="summary-row net"><span>Claim for this trip</span><span id="mil-claim">-</span></div>
+    </div>
+
+    <button class="btn btn-send" id="mil-log-btn" onclick="logMileage()">Log Mileage</button>
+
+    <div class="status" id="mil-status"></div>
   </div>
 
   <!-- ── HISTORY TAB ── -->
@@ -356,11 +441,42 @@ body {
     <div id="inv-history"></div>
     <div class="section-title" style="margin-top:24px;">Recent Expenses</div>
     <div id="exp-history"></div>
+    <div class="section-title" style="margin-top:24px;">Recent Mileage</div>
+    <div id="mil-history"></div>
     <button class="btn btn-outline" onclick="clearHistory()" style="margin-top:20px;font-size:0.85rem;">Clear History</button>
   </div>
 
   <!-- ── SETTINGS TAB ── -->
   <div class="panel" id="panel-settings">
+
+    <div class="section-title">Tax &amp; Mileage Rates</div>
+    <div class="hint" style="margin-bottom:10px;">Update these after the Chancellor's Budget if HMRC rates change. Existing invoices and mileage entries keep the rate they were saved with.</div>
+    <div class="form-group">
+      <label>CIS Deduction Rate (%)</label>
+      <input id="cfg-cis-rate" type="number" min="0" max="100" step="0.01" oninput="saveQuickSetting()">
+      <div class="hint">Standard 20. Use 30 if unverified, 0 if gross status.</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Mileage Rate 1 (&pound;/mile)</label>
+        <input id="cfg-mil-rate1" type="number" min="0" step="0.01" oninput="saveQuickSetting()">
+        <div class="hint">Cars &amp; vans: 0.45</div>
+      </div>
+      <div class="form-group">
+        <label>Threshold (miles)</label>
+        <input id="cfg-mil-threshold" type="number" min="0" step="1" oninput="saveQuickSetting()">
+        <div class="hint">Usually 10000</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Mileage Rate 2 (&pound;/mile, above threshold)</label>
+      <input id="cfg-mil-rate2" type="number" min="0" step="0.01" oninput="saveQuickSetting()">
+      <div class="hint">Cars &amp; vans: 0.25</div>
+    </div>
+    <div class="form-group">
+      <label>Rates Last Updated</label>
+      <input id="cfg-rates-updated" readonly style="background:#f0f2f5;">
+    </div>
 
     <div class="section-title">Day Rate</div>
     <div class="form-group">
@@ -614,11 +730,21 @@ const STORAGE_KEY = 'jtwalton_config';
 const HISTORY_KEY = 'jtwalton_history';
 
 let config = {};
-let history = { invoices: [], expenses: [] };
+let history = { invoices: [], expenses: [], mileage: [] };
+
+function ensureRateDefaults() {
+  if (config.cisRate == null) config.cisRate = 0.20;
+  if (config.mileageRate1 == null) config.mileageRate1 = 0.45;
+  if (config.mileageRate2 == null) config.mileageRate2 = 0.25;
+  if (config.mileageThreshold == null) config.mileageThreshold = 10000;
+  if (config.nextMileage == null) config.nextMileage = 1;
+}
 
 function loadConfig() {
   try { config = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { config = {}; }
-  try { history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || { invoices: [], expenses: [] }; } catch(e) { history = { invoices: [], expenses: [] }; }
+  try { history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || { invoices: [], expenses: [], mileage: [] }; } catch(e) { history = { invoices: [], expenses: [], mileage: [] }; }
+  if (!history.mileage) history.mileage = [];
+  ensureRateDefaults();
 }
 
 function saveConfig() {
@@ -690,7 +816,16 @@ function initApp() {
   document.getElementById('exp-num').value = pad4(config.nextExpense);
   document.getElementById('exp-date').value = todayStr();
 
+  // Set mileage defaults
+  document.getElementById('mil-num').value = pad4(config.nextMileage);
+  document.getElementById('mil-date').value = todayStr();
+  document.getElementById('mil-miles').value = '';
+  document.getElementById('mil-from').value = '';
+  document.getElementById('mil-to').value = '';
+  document.getElementById('mil-purpose').value = '';
+
   calcInvoice();
+  calcMileage();
   updateExpenseHint();
   renderHistory();
 }
@@ -711,11 +846,15 @@ function calcInvoice() {
   const overtime = parseFloat(document.getElementById('inv-overtime').value) || 0;
   const materials = parseFloat(document.getElementById('inv-materials').value) || 0;
 
+  const cisRate = (config.cisRate != null) ? config.cisRate : 0.2;
   const labour = days * rate;
   const gross = labour + overtime + materials;
-  const cis = (labour + overtime) * 0.2;
+  const cis = (labour + overtime) * cisRate;
   const net = gross - cis;
 
+  const cisPct = (cisRate * 100).toFixed(cisRate * 100 % 1 === 0 ? 0 : 1);
+  const cisLabelEl = document.getElementById('sum-cis-label');
+  if (cisLabelEl) cisLabelEl.textContent = 'CIS Deduction (' + cisPct + '% of labour + overtime)';
   document.getElementById('sum-labour').textContent = money(labour);
   document.getElementById('sum-overtime').textContent = money(overtime);
   document.getElementById('sum-materials').textContent = money(materials);
@@ -725,7 +864,9 @@ function calcInvoice() {
 }
 
 // ── PDF GENERATION ──────────────────────────────────────────────────
-function buildInvoicePDF({ num, date, days, rate, desc, overtime, materials, labour, gross, cis, net, watermark }) {
+function buildInvoicePDF({ num, date, days, rate, desc, overtime, materials, labour, gross, cis, net, watermark, cisRate }) {
+  const cisRateUsed = (cisRate != null) ? cisRate : ((config.cisRate != null) ? config.cisRate : 0.2);
+  const cisPct = (cisRateUsed * 100).toFixed(cisRateUsed * 100 % 1 === 0 ? 0 : 1);
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF('p', 'mm', 'a4');
   const w = doc.internal.pageSize.getWidth();
@@ -840,7 +981,7 @@ function buildInvoicePDF({ num, date, days, rate, desc, overtime, materials, lab
     margin: { left: m, right: m },
     body: [
       [{ content: 'GROSS TOTAL (Total Labour and Materials)', styles: { fontStyle: 'bold' } }, money(gross)],
-      [{ content: 'TAX DEDUCTION (This invoice is subject to the Construction Industry Scheme (CIS). 20% of labour costs only to be paid directly to HMRC by Contractor under UTR ' + config.utr + ')', styles: { fontStyle: 'bold' } }, money(cis)],
+      [{ content: 'TAX DEDUCTION (This invoice is subject to the Construction Industry Scheme (CIS). ' + cisPct + '% of labour costs only to be paid directly to HMRC by Contractor under UTR ' + config.utr + ')', styles: { fontStyle: 'bold' } }, money(cis)],
       [{ content: 'NET AMOUNT TO PAY', styles: { fontStyle: 'bold', fontSize: 10 } }, { content: money(net), styles: { fontStyle: 'bold', fontSize: 10 } }],
       [{ content: 'STATUS', styles: { fontStyle: 'bold' } }, { content: 'Due on receipt', styles: { textColor: [46, 125, 82], fontStyle: 'bold' } }]
     ],
@@ -922,20 +1063,21 @@ function sendInvoice() {
   const materials = parseFloat(document.getElementById('inv-materials').value) || 0;
 
   if (!days || !date) {
-    showStatus('inv-status', 'Please enter days worked and date.', 'error');
+    showOverlayMessage('Fill in the details first', 'Please enter days worked and the invoice date before sending.');
     return;
   }
   if (!msAccount) {
-    showStatus('inv-status', 'Please tap "Sign in" at the top right with your Microsoft account first.', 'error');
+    showOverlayMessage('Sign in to Microsoft', 'Tap "Sign in" at the top right with your Microsoft account first.');
     return;
   }
 
+  const cisRate = (config.cisRate != null) ? config.cisRate : 0.2;
   const labour = days * rate;
   const gross = labour + overtime + materials;
-  const cis = (labour + overtime) * 0.2;
+  const cis = (labour + overtime) * cisRate;
   const net = gross - cis;
 
-  const pdfBlob = buildInvoicePDF({ num, date, days, rate, desc, overtime, materials, labour, gross, cis, net });
+  const pdfBlob = buildInvoicePDF({ num, date, days, rate, desc, overtime, materials, labour, gross, cis, net, cisRate });
   const filename = invoiceFilename(num, date);
   const dateLong = formatDateLong(date);
   const taxYear = taxYearFromDate(date);
@@ -951,13 +1093,11 @@ function sendInvoice() {
     'Kind regards,\n' + config.name + '\n' + config.mobile;
 
   (async () => {
+    showOverlay('Saving PDF to OneDrive...');
     try {
-      sendBtn.textContent = 'Saving to OneDrive...';
-      showStatus('inv-status', 'Saving PDF to OneDrive...', 'success');
       await graphUploadToOneDrive(pdfBlob, folder, filename);
 
-      sendBtn.textContent = 'Sending email...';
-      showStatus('inv-status', 'Sending invoice email...', 'success');
+      updateOverlay('Sending invoice email...');
       await graphSendMail({
         to: config.contractorEmail,
         cc: config.familyEmail,
@@ -967,7 +1107,7 @@ function sendInvoice() {
         attachmentBlob: pdfBlob
       });
 
-      sendBtn.textContent = 'Updating accounts...';
+      updateOverlay('Updating accounts...');
       const pdfPath = folder + '/' + filename;
       await appendAccountsRow(date, [
         date, 'Invoice', num, desc, days, rate.toFixed(2), labour.toFixed(2),
@@ -976,7 +1116,7 @@ function sendInvoice() {
       ]);
 
       history.invoices.unshift({
-        num, date, days, rate, labour, overtime, materials, gross, cis, net, desc,
+        num, date, days, rate, labour, overtime, materials, gross, cis, net, desc, cisRate,
         status: 'sent', pdfPath, sent: new Date().toISOString()
       });
       if (history.invoices.length > 100) history.invoices = history.invoices.slice(0, 100);
@@ -985,8 +1125,6 @@ function sendInvoice() {
       config.nextInvoice = (parseInt(num) || 0) + 1;
       saveConfig();
 
-      showStatus('inv-status', '✓ Invoice #' + num + ' sent, saved to OneDrive (' + folder + '), logged in accounts ' + taxYear + '.', 'success');
-
       document.getElementById('inv-num').value = pad4(config.nextInvoice);
       document.getElementById('inv-days').value = '';
       document.getElementById('inv-desc').value = 'Labour';
@@ -994,9 +1132,11 @@ function sendInvoice() {
       document.getElementById('inv-materials').value = '0';
       calcInvoice();
       renderHistory();
+
+      showOverlayDone('Invoice #' + num + ' sent', 'To ' + config.contractorEmail + ', CC ' + config.familyEmail + '. PDF in OneDrive (' + taxYear + '). Accounts updated.');
     } catch (err) {
       console.error(err);
-      showStatus('inv-status', 'Error: ' + err.message, 'error');
+      showOverlayError(err.message);
     } finally {
       sendBtn.disabled = false;
       sendBtn.textContent = originalLabel;
@@ -1019,7 +1159,7 @@ async function reverseInvoice(index) {
   if (!confirm('Reverse Invoice #' + inv.num + '?\n\nThis will:\n• Send a RETRACTED notice to ' + config.contractorEmail + '\n• Save a REVERSED copy of the PDF to OneDrive as #' + inv.num + 'R\n• Record a reversal in the accounts spreadsheet\n• Free up #' + inv.num + ' as the next invoice number\n\nContinue?')) return;
 
   try {
-    showStatus('inv-status', 'Reversing invoice #' + inv.num + '...', 'success');
+    showOverlay('Reversing invoice #' + inv.num + '...');
     const rNum = inv.num + 'R';
     const rFilename = invoiceFilename(rNum, inv.date);
     const taxYear = taxYearFromDate(inv.date);
@@ -1029,11 +1169,14 @@ async function reverseInvoice(index) {
     const reversedBlob = buildInvoicePDF({
       num: rNum, date: inv.date, days: inv.days, rate: inv.rate, desc: inv.desc,
       overtime: inv.overtime, materials: inv.materials, labour: inv.labour,
-      gross: inv.gross, cis: inv.cis, net: inv.net, watermark: 'REVERSED'
+      gross: inv.gross, cis: inv.cis, net: inv.net, watermark: 'REVERSED',
+      cisRate: inv.cisRate
     });
 
+    updateOverlay('Saving REVERSED PDF to OneDrive...');
     await graphUploadToOneDrive(reversedBlob, folder, rFilename);
 
+    updateOverlay('Sending retraction email...');
     await graphSendMail({
       to: config.contractorEmail,
       cc: config.familyEmail,
@@ -1047,6 +1190,7 @@ async function reverseInvoice(index) {
       attachmentBlob: reversedBlob
     });
 
+    updateOverlay('Updating accounts...');
     const rPdfPath = folder + '/' + rFilename;
     await appendAccountsRow(inv.date, [
       inv.date, 'Reversal', rNum, 'REVERSAL of #' + inv.num + ' — ' + inv.desc,
@@ -1070,10 +1214,10 @@ async function reverseInvoice(index) {
     saveHistory();
     saveConfig();
     renderHistory();
-    showStatus('inv-status', '✓ Invoice #' + inv.num + ' reversed. You can now issue a corrected #' + pad4(config.nextInvoice) + '.', 'success');
+    showOverlayDone('Invoice #' + inv.num + ' reversed', 'Retraction sent to ' + config.contractorEmail + '. You can now issue a corrected #' + pad4(config.nextInvoice) + '.');
   } catch (err) {
     console.error(err);
-    showStatus('inv-status', 'Reversal failed: ' + err.message, 'error');
+    showOverlayError(err.message);
   }
 }
 
@@ -1161,20 +1305,19 @@ async function submitExpense(mode, file) {
     'Category: ' + category + '\n' +
     'Amount: ' + money(amount) + '\n\n';
 
+  showOverlay('Processing expense #' + num + '...');
   try {
-    showStatus('exp-status', 'Processing...', 'success');
-
     let pdfBlob = null;
     if (mode === 'upload' || mode === 'photo') {
       if (file.type === 'application/pdf') {
         pdfBlob = file;
       } else if (file.type.startsWith('image/')) {
-        showStatus('exp-status', 'Converting image to PDF...', 'success');
+        updateOverlay('Converting photo to PDF...');
         pdfBlob = await imageFileToPdfBlob(file);
       } else {
         throw new Error('Unsupported file type: ' + file.type);
       }
-      showStatus('exp-status', 'Saving receipt to OneDrive...', 'success');
+      updateOverlay('Saving receipt to OneDrive...');
       await graphUploadToOneDrive(pdfBlob, folder, filename);
     }
 
@@ -1182,7 +1325,7 @@ async function submitExpense(mode, file) {
       ? baseBody + 'Receipt to be added manually to OneDrive as:\n' + pdfPath + '\n\nStatus: PENDING RECEIPT.'
       : baseBody + 'Receipt attached. Filed to OneDrive at:\n' + pdfPath;
 
-    showStatus('exp-status', 'Sending expense email...', 'success');
+    updateOverlay('Sending expense email...');
     const mailArgs = {
       to: config.familyEmail,
       cc: null,
@@ -1197,7 +1340,7 @@ async function submitExpense(mode, file) {
       await graphSendMail(mailArgs);
     }
 
-    showStatus('exp-status', 'Updating accounts...', 'success');
+    updateOverlay('Updating accounts...');
     await appendAccountsRow(date, [
       date, 'Expense', num, supplier + ' — ' + desc + ' (' + category + ')',
       '', '', '', '', '', amount.toFixed(2), '', amount.toFixed(2), status, pdfPath
@@ -1220,13 +1363,14 @@ async function submitExpense(mode, file) {
     updateExpenseHint();
     renderHistory();
 
-    const msg = (mode === 'later')
-      ? '✓ Expense #' + num + ' logged (pending receipt). Save file later as: ' + filename
-      : '✓ Expense #' + num + ' sent to ' + config.familyEmail + ', receipt saved in OneDrive.';
-    showStatus('exp-status', msg, 'success');
+    if (mode === 'later') {
+      showOverlayDone('Expense #' + num + ' logged', 'Pending receipt — save the file later as: ' + filename);
+    } else {
+      showOverlayDone('Expense #' + num + ' sent', 'Receipt uploaded to OneDrive (' + taxYear + '), emailed to ' + config.familyEmail + ', accounts updated.');
+    }
   } catch (err) {
     console.error(err);
-    showStatus('exp-status', 'Error: ' + err.message, 'error');
+    showOverlayError(err.message);
   }
 }
 
@@ -1249,10 +1393,170 @@ async function graphSendMailNoAttach({ to, cc, subject, body }) {
   if (!res.ok) throw new Error('Send mail failed: ' + res.status + ' ' + await res.text());
 }
 
+// ── MILEAGE ─────────────────────────────────────────────────────────
+function mileageClaim(ytdBefore, miles) {
+  if (miles <= 0) return 0;
+  const t = config.mileageThreshold;
+  const r1 = config.mileageRate1;
+  const r2 = config.mileageRate2;
+  if (ytdBefore + miles <= t) return miles * r1;
+  if (ytdBefore >= t) return miles * r2;
+  const atR1 = t - ytdBefore;
+  const atR2 = miles - atR1;
+  return atR1 * r1 + atR2 * r2;
+}
+
+function getYtdMiles(dateStr) {
+  if (!dateStr) return 0;
+  const taxYear = taxYearFromDate(dateStr);
+  let total = 0;
+  for (const m of history.mileage) {
+    if (taxYearFromDate(m.date) === taxYear) total += (parseFloat(m.miles) || 0);
+  }
+  return total;
+}
+
+function calcMileage() {
+  const date = document.getElementById('mil-date').value;
+  const miles = parseFloat(document.getElementById('mil-miles').value) || 0;
+  const ytdBefore = date ? getYtdMiles(date) : 0;
+  const claim = mileageClaim(ytdBefore, miles);
+  const r1 = config.mileageRate1, r2 = config.mileageRate2, t = config.mileageThreshold;
+
+  document.getElementById('mil-ytd').textContent = ytdBefore.toFixed(1) + ' / ' + t.toLocaleString();
+  let rateText = '-';
+  if (miles > 0) {
+    if (ytdBefore + miles <= t) rateText = '\u00A3' + r1.toFixed(2) + '/mile';
+    else if (ytdBefore >= t) rateText = '\u00A3' + r2.toFixed(2) + '/mile';
+    else {
+      const atR1 = t - ytdBefore;
+      const atR2 = miles - atR1;
+      rateText = atR1.toFixed(1) + ' @ \u00A3' + r1.toFixed(2) + ' + ' + atR2.toFixed(1) + ' @ \u00A3' + r2.toFixed(2);
+    }
+  }
+  document.getElementById('mil-rate').textContent = rateText;
+  document.getElementById('mil-claim').textContent = miles > 0 ? money(claim) : '-';
+}
+
+async function appendMileageLogRow(dateStr, rowValues) {
+  const taxYear = taxYearFromDate(dateStr);
+  const filename = 'JT Walton Mileage ' + taxYear + '.csv';
+  const path = 'JT Walton/Mileage/' + filename;
+  const token = await msGetToken();
+  const url = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(path) + ':/content';
+
+  const header = 'Date,Number,From,To,Purpose,Miles,CumulativeMiles,RateBreakdown,Claim\n';
+  let existing = '';
+  const getRes = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+  if (getRes.ok) {
+    existing = await getRes.text();
+    if (!existing.endsWith('\n')) existing += '\n';
+  } else if (getRes.status === 404) {
+    existing = header;
+  } else {
+    throw new Error('Mileage log read failed: ' + getRes.status);
+  }
+
+  const csv = existing + rowValues.map(csvEscape).join(',') + '\n';
+  const putRes = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/csv' },
+    body: csv
+  });
+  if (!putRes.ok) throw new Error('Mileage log write failed: ' + putRes.status);
+}
+
+async function logMileage() {
+  const num = document.getElementById('mil-num').value;
+  const date = document.getElementById('mil-date').value;
+  const from = document.getElementById('mil-from').value.trim();
+  const to = document.getElementById('mil-to').value.trim();
+  const purpose = document.getElementById('mil-purpose').value.trim();
+  const miles = parseFloat(document.getElementById('mil-miles').value) || 0;
+
+  const missing = [];
+  if (!date) missing.push('date');
+  if (!from) missing.push('from');
+  if (!to) missing.push('to');
+  if (!purpose) missing.push('purpose');
+  if (!miles) missing.push('miles');
+  if (missing.length) {
+    showOverlayMessage('Fill in the details first', 'Please enter the ' + missing.join(', ') + ' before logging.');
+    return;
+  }
+  if (!msAccount) {
+    showOverlayMessage('Sign in to Microsoft', 'Tap "Sign in" at the top right with your Microsoft account first.');
+    return;
+  }
+
+  const ytdBefore = getYtdMiles(date);
+  const ytdAfter = ytdBefore + miles;
+  const claim = mileageClaim(ytdBefore, miles);
+  const taxYear = taxYearFromDate(date);
+  const logPath = 'JT Walton/Mileage/JT Walton Mileage ' + taxYear + '.csv';
+  const r1 = config.mileageRate1, r2 = config.mileageRate2, t = config.mileageThreshold;
+
+  let rateBreakdown;
+  if (ytdBefore + miles <= t) rateBreakdown = miles.toFixed(1) + ' @ £' + r1.toFixed(2);
+  else if (ytdBefore >= t) rateBreakdown = miles.toFixed(1) + ' @ £' + r2.toFixed(2);
+  else {
+    const atR1 = t - ytdBefore;
+    const atR2 = miles - atR1;
+    rateBreakdown = atR1.toFixed(1) + ' @ £' + r1.toFixed(2) + ' + ' + atR2.toFixed(1) + ' @ £' + r2.toFixed(2);
+  }
+
+  const btn = document.getElementById('mil-log-btn');
+  btn.disabled = true;
+
+  try {
+    showOverlay('Saving mileage entry...');
+
+    updateOverlay('Updating mileage log...');
+    await appendMileageLogRow(date, [
+      date, num, from, to, purpose,
+      miles.toFixed(1), ytdAfter.toFixed(1), rateBreakdown, claim.toFixed(2)
+    ]);
+
+    updateOverlay('Updating accounts...');
+    const desc = miles.toFixed(1) + ' miles: ' + from + ' -> ' + to + ' - ' + purpose;
+    await appendAccountsRow(date, [
+      date, 'Mileage', num, desc, '', '', '', '', '',
+      claim.toFixed(2), '', claim.toFixed(2), 'Logged', logPath
+    ]);
+
+    history.mileage.unshift({
+      num, date, from, to, purpose, miles, claim, logPath,
+      rate1: r1, rate2: r2, threshold: t,
+      sent: new Date().toISOString()
+    });
+    if (history.mileage.length > 100) history.mileage = history.mileage.slice(0, 100);
+    saveHistory();
+
+    config.nextMileage = (parseInt(num) || 0) + 1;
+    saveConfig();
+
+    document.getElementById('mil-num').value = pad4(config.nextMileage);
+    document.getElementById('mil-from').value = '';
+    document.getElementById('mil-to').value = '';
+    document.getElementById('mil-purpose').value = '';
+    document.getElementById('mil-miles').value = '';
+    calcMileage();
+    renderHistory();
+
+    showOverlayDone('Mileage #' + num + ' logged', miles.toFixed(1) + ' miles - claim ' + money(claim) + '. Saved to OneDrive (' + taxYear + ') and accounts updated.');
+  } catch (err) {
+    console.error(err);
+    showOverlayError(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ── HISTORY ─────────────────────────────────────────────────────────
 function renderHistory() {
   const invDiv = document.getElementById('inv-history');
   const expDiv = document.getElementById('exp-history');
+  const milDiv = document.getElementById('mil-history');
 
   if (!history.invoices.length) {
     invDiv.innerHTML = '<div style="color:#999;font-size:0.9rem;padding:10px;">No invoices yet</div>';
@@ -1296,11 +1600,29 @@ function renderHistory() {
       `;
     }).join('');
   }
+
+  if (!milDiv) return;
+  if (!history.mileage.length) {
+    milDiv.innerHTML = '<div style="color:#999;font-size:0.9rem;padding:10px;">No mileage yet</div>';
+  } else {
+    milDiv.innerHTML = history.mileage.slice(0, 20).map(m => {
+      const miles = (parseFloat(m.miles) || 0).toFixed(1);
+      return `
+        <div class="history-item">
+          <div>
+            <div class="num">#${m.num}</div>
+            <div class="date">${formatDateShort(m.date)} - ${m.from} &rarr; ${m.to} (${miles} mi)</div>
+          </div>
+          <div class="amount">${money(m.claim)}</div>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 function clearHistory() {
   if (confirm('Clear all history from this device? (This does not delete any emails or spreadsheet data)')) {
-    history = { invoices: [], expenses: [] };
+    history = { invoices: [], expenses: [], mileage: [] };
     saveHistory();
     renderHistory();
   }
@@ -1320,6 +1642,11 @@ function loadSettingsTab() {
   document.getElementById('cfg-address').value = config.address || '';
   document.getElementById('cfg-utr').value = config.utr || '';
   document.getElementById('cfg-family-email').value = config.familyEmail || '';
+  document.getElementById('cfg-cis-rate').value = ((config.cisRate != null ? config.cisRate : 0.20) * 100).toString();
+  document.getElementById('cfg-mil-rate1').value = config.mileageRate1 != null ? config.mileageRate1 : 0.45;
+  document.getElementById('cfg-mil-rate2').value = config.mileageRate2 != null ? config.mileageRate2 : 0.25;
+  document.getElementById('cfg-mil-threshold').value = config.mileageThreshold != null ? config.mileageThreshold : 10000;
+  document.getElementById('cfg-rates-updated').value = config.ratesUpdated || 'Never (defaults in use)';
 }
 
 function saveQuickSetting() {
@@ -1335,11 +1662,31 @@ function saveQuickSetting() {
   config.address = document.getElementById('cfg-address').value.trim();
   config.utr = document.getElementById('cfg-utr').value.trim();
   config.familyEmail = document.getElementById('cfg-family-email').value.trim();
+
+  const newCisRate = (parseFloat(document.getElementById('cfg-cis-rate').value) || 0) / 100;
+  const newR1 = parseFloat(document.getElementById('cfg-mil-rate1').value) || 0;
+  const newR2 = parseFloat(document.getElementById('cfg-mil-rate2').value) || 0;
+  const newT = parseInt(document.getElementById('cfg-mil-threshold').value) || 0;
+  const ratesChanged =
+    config.cisRate !== newCisRate ||
+    config.mileageRate1 !== newR1 ||
+    config.mileageRate2 !== newR2 ||
+    config.mileageThreshold !== newT;
+  config.cisRate = newCisRate;
+  config.mileageRate1 = newR1;
+  config.mileageRate2 = newR2;
+  config.mileageThreshold = newT;
+  if (ratesChanged) {
+    config.ratesUpdated = todayStr();
+    document.getElementById('cfg-rates-updated').value = config.ratesUpdated;
+  }
+
   saveConfig();
 
   // Update the invoice day rate field to match
   document.getElementById('inv-rate').value = config.dayRate;
   calcInvoice();
+  calcMileage();
 
   showStatus('cfg-status', 'Saved', 'success');
 }
@@ -1350,7 +1697,8 @@ function resetAll() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(HISTORY_KEY);
     config = {};
-    history = { invoices: [], expenses: [] };
+    history = { invoices: [], expenses: [], mileage: [] };
+    ensureRateDefaults();
     showSetup();
   }
 }
@@ -1386,6 +1734,78 @@ function showStatus(id, msg, type) {
   el.textContent = msg;
   el.className = 'status ' + type;
   setTimeout(() => { el.className = 'status'; }, 8000);
+}
+
+// ── PROCESSING OVERLAY ──────────────────────────────────────────────
+function showOverlay(text) {
+  const o = document.getElementById('processing-overlay');
+  document.getElementById('overlay-icon').innerHTML = '<div class="spinner"></div>';
+  document.getElementById('overlay-text').textContent = text || 'Working...';
+  document.getElementById('overlay-sub').textContent = '';
+  document.getElementById('overlay-close').style.display = 'none';
+  o.style.display = 'flex';
+}
+
+function updateOverlay(text) {
+  const el = document.getElementById('overlay-text');
+  if (el) el.textContent = text;
+}
+
+function showOverlayDone(text, sub) {
+  document.getElementById('overlay-icon').innerHTML = '<div style="font-size:60px;color:#2a7d5f;line-height:1;">✓</div>';
+  document.getElementById('overlay-text').textContent = text;
+  document.getElementById('overlay-text').style.color = '#2a7d5f';
+  document.getElementById('overlay-sub').textContent = sub || '';
+  document.getElementById('overlay-close').style.display = 'inline-block';
+  document.getElementById('overlay-close').textContent = 'OK';
+}
+
+function showOverlayError(text) {
+  document.getElementById('overlay-icon').innerHTML = '<div style="font-size:60px;color:#c0392b;line-height:1;">✕</div>';
+  document.getElementById('overlay-text').textContent = 'Failed';
+  document.getElementById('overlay-text').style.color = '#c0392b';
+  document.getElementById('overlay-sub').textContent = text;
+  document.getElementById('overlay-close').style.display = 'inline-block';
+  document.getElementById('overlay-close').textContent = 'OK';
+}
+
+function showOverlayMessage(text, sub) {
+  const o = document.getElementById('processing-overlay');
+  document.getElementById('overlay-icon').innerHTML = '<div style="font-size:60px;color:#e67e22;line-height:1;">!</div>';
+  document.getElementById('overlay-text').textContent = text;
+  document.getElementById('overlay-text').style.color = '#e67e22';
+  document.getElementById('overlay-sub').textContent = sub || '';
+  document.getElementById('overlay-close').style.display = 'inline-block';
+  document.getElementById('overlay-close').textContent = 'OK';
+  o.style.display = 'flex';
+}
+
+function validateExpenseDetails() {
+  const supplier = document.getElementById('exp-supplier').value.trim();
+  const desc = document.getElementById('exp-desc').value.trim();
+  const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+  const date = document.getElementById('exp-date').value;
+  const missing = [];
+  if (!supplier) missing.push('supplier');
+  if (!desc) missing.push('description');
+  if (!amount) missing.push('amount');
+  if (!date) missing.push('date');
+  if (missing.length) {
+    showOverlayMessage('Fill in the details first', 'Please enter the ' + missing.join(', ') + ' before attaching a receipt.');
+    return false;
+  }
+  if (!msAccount) {
+    showOverlayMessage('Sign in to Microsoft', 'Tap "Sign in" at the top right with your Microsoft account first.');
+    return false;
+  }
+  return true;
+}
+
+function hideOverlay() {
+  const o = document.getElementById('processing-overlay');
+  if (o) o.style.display = 'none';
+  const t = document.getElementById('overlay-text');
+  if (t) t.style.color = '';
 }
 
 // ── BOOT ────────────────────────────────────────────────────────────
